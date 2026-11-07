@@ -1,6 +1,6 @@
 ---
 name: hermes-github-env
-description: Create the GitHub production environment, variables and secrets for the deploy workflow without exposing values.
+description: Create the GitHub deployment environment, variables and secrets for the deploy workflow without exposing values.
 ---
 
 # hermes-github-env
@@ -14,10 +14,10 @@ description: Create the GitHub production environment, variables and secrets for
 
 ## Steps
 1. Confirm the repo is **private** and owned by the user: `gh repo view --json visibility,nameWithOwner`.
-2. With approval create environment `production`; restrict to `main`; add required reviewers if the plan allows. If it does not, tell the user that anyone who can run workflows can deploy as root and that repo write access must be limited.
-3. Set variables with `gh variable set NAME --env production` (HOSTINGER_HOST, HOSTINGER_USER, HOSTINGER_PROJECT_DIR, COMPOSE_FILE, HERMES_SERVICE, MNEMOSYNE_DB_PATH) from the user's profile.
-4. Secrets: the user runs `gh secret set TS_OAUTH_CLIENT_ID|TS_AUDIENCE|RESTIC_PASSWORD --env production` themselves (hidden prompt) and pipes the base64 rclone config to `RCLONE_CONFIG_B64`.
-5. Verify with `gh secret list --env production` and `gh variable list --env production` (names only).
+2. With approval create environment `<DEPLOYMENT>` (same name as the folder in `deployments/`); restrict to `main`; add required reviewers if the plan allows. If it does not, tell the user that anyone who can run workflows can deploy as root and that repo write access must be limited.
+3. Set variables with `gh variable set NAME --env <DEPLOYMENT>` (HOSTINGER_HOST, HOSTINGER_USER, HOSTINGER_PROJECT_DIR, COMPOSE_FILE, HERMES_SERVICE, MNEMOSYNE_DB_PATH) from the user's profile.
+4. Secrets: the user runs `gh secret set TS_OAUTH_CLIENT_ID|TS_AUDIENCE|RESTIC_PASSWORD --env <DEPLOYMENT>` themselves (hidden prompt) and pipes the base64 rclone config to `RCLONE_CONFIG_B64`.
+5. Verify with `gh secret list --env <DEPLOYMENT>` and `gh variable list --env <DEPLOYMENT>` (names only).
 
 ## Stop if
 The repository is public, or a secret would have to be typed into chat.

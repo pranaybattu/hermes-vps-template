@@ -32,6 +32,13 @@ hermes-infra init        # writes hermes-infra.toml (git-ignored)
 hermes-infra validate
 ```
 
+## Isolated deployments
+
+Each deployment is a folder under `deployments/` (start from `deployments/example`). It gets its own
+GitHub environment (same name), Tailscale workload identity, VPS, restic repository
+(`drive:hermes-<name>/mnemosyne`) and deploy concurrency group, so deployments never share secrets,
+backups or runs. Deploy one at a time with `Deploy to VPS` and `deployment=<name>`.
+
 ## Skills
 
 Skills live in `.agents/skills/<name>/SKILL.md`. To use them in Claude Code, copy or symlink
@@ -43,7 +50,8 @@ on your VPS, GitHub or Tailscale account.
 |---|---|
 | `hermes-preflight` | Read-only check of local tools, GitHub login and VPS reachability |
 | `hermes-setup` | Profile, Tailscale policy and workload identity |
-| `hermes-github-env` | `production` environment, variables and secrets |
+| `hermes-new-deployment` | Add another isolated deployment (folder, environment, identity, backups) |
+| `hermes-github-env` | Per-deployment GitHub environment, variables and secrets |
 | `hermes-backups` | rclone remote, restic repository, restore drill |
 | `hermes-deploy` | Dispatch and watch the deploy, read failures |
 | `hermes-verify` | Private dashboard, memory status, no public exposure |
@@ -68,7 +76,8 @@ are committed. Read [docs/security.md](docs/security.md) and [SECURITY.md](SECUR
 | Path | Purpose |
 |---|---|
 | `src/hermes_infra_manager/` | CLI, profile validation, SSH/Compose operations |
-| `docker-compose.yml`, `Dockerfile.workspace` | Reviewed Compose source with variable references only |
+| `deployments/<name>/docker-compose.yml` | One reviewed Compose source per deployment, variable references only |
+| `Dockerfile.workspace` | Workspace image recipe shared by deployments |
 | `infra/tailscale/` | Tailscale policy and Terraform |
 | `.github/workflows/` | CI and manually dispatched deploy |
 | `scripts/` | Memory install, SQLite snapshot, dashboard auth and private HTTPS helpers |

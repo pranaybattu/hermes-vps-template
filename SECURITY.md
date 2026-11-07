@@ -15,4 +15,4 @@ private IPs or tailnet names tied to a real deployment, personal emails, and scr
 
 ## Scope
 This project deploys software as root on a server you own. Review every change to
-`.github/workflows/`, `docker-compose.yml` and `scripts/` before merging.
+`.github/workflows/`, `deployments/*/docker-compose.yml` and `scripts/` before merging.

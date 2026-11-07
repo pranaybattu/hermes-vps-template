@@ -15,7 +15,7 @@ description: Create the hermes-infra profile, review and apply the Tailscale pol
 ## Steps
 1. `hermes-infra init`, help the user fill the git-ignored profile, set `profile.example = false`, then `hermes-infra validate` and `plan`.
 2. Review `infra/tailscale/policy.hujson` with the user: tags `tag:ci` and `tag:hermes-vps`, SSH rules, tests. Run `terraform -chdir=infra/tailscale plan`; show it; apply only after approval. Never commit state files.
-3. Guide the user to create the Tailscale workload identity (scope `auth_keys`, tag `tag:ci`, subject `repo:<ORG>@<ORG_ID>/<REPO>@<REPO_ID>:environment:production`). The user keeps the client ID and audience for the next skill.
+3. Guide the user to create the Tailscale workload identity (scope `auth_keys`, tag `tag:ci`, subject `repo:<ORG>@<ORG_ID>/<REPO>@<REPO_ID>:environment:<DEPLOYMENT>`). The user keeps the client ID and audience for the next skill.
 4. On a 403 later, compare the received subject from Tailscale's diagnostic; never widen the subject to `*`.
 
 ## Stop if

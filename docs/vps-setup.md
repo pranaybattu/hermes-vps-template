@@ -51,7 +51,7 @@ an immutable image digest and never copies `.env` or prints Hostinger environmen
 values. Compose validation runs quietly on the VPS; provider values are not
 retrieved by the runner or sent to GitHub.
 
-Create a GitHub environment named `production` and add these environment
+Create a GitHub environment named after your deployment (`<DEPLOYMENT>`) and add these environment
 variables. Copy the project path and Compose filename from Docker Manager; the
 workflow deliberately has no guessed defaults.
 
@@ -60,11 +60,11 @@ workflow deliberately has no guessed defaults.
 | `HOSTINGER_HOST` | VPS Tailscale IP or DNS name |
 | `HOSTINGER_USER` | SSH account |
 | `HOSTINGER_PROJECT_DIR` | Existing Hostinger Compose project directory |
-| `COMPOSE_FILE` | Tracked Compose filename at the repository root and VPS project root |
+| `COMPOSE_FILE` | Compose filename on the VPS project root; the source is `deployments/<DEPLOYMENT>/docker-compose.yml` |
 | `HERMES_SERVICE` | `hermes-agent` |
 | `MNEMOSYNE_DB_PATH` | `/opt/data/mnemosyne/data/mnemosyne.db` |
 
-Add these **environment secrets** to `production`:
+Add these **environment secrets** to `<DEPLOYMENT>`:
 
 | Secret | Contents |
 |---|---|
@@ -91,15 +91,15 @@ production secrets.
 Only `mnemosyne.db` is backed up. `scripts/sqlite_snapshot.py` uses SQLite's
 online backup API and streams the integrity-checked snapshot directly to
 Restic, so the runner does not create a plaintext database file. Restic encrypts
-the backup before rclone sends it to `drive:hermes-production/mnemosyne`.
+the backup before rclone sends it to `drive:hermes-<DEPLOYMENT>/mnemosyne`.
 Initialize that repository once from a trusted workstation after configuring
 the same rclone remote and Restic password. Keep both credentials in a password
-manager and GitHub's `production` environment; do not commit either config.
+manager and GitHub's `<DEPLOYMENT>` environment; do not commit either config.
 
 ```bash
 set -e
 export RCLONE_CONFIG="$HOME/.config/rclone/rclone.conf"
-export RESTIC_REPOSITORY='rclone:drive:hermes-production/mnemosyne'
+export RESTIC_REPOSITORY='rclone:drive:hermes-<DEPLOYMENT>/mnemosyne'
 read -r -s -p 'Restic password: ' RESTIC_PASSWORD
 echo
 export RESTIC_PASSWORD
@@ -121,11 +121,11 @@ For example, pipe a local rclone config directly into GitHub CLI:
 
 ```sh
 base64 < "$HOME/.config/rclone/rclone.conf" | tr -d '\n' \
-  | gh secret set RCLONE_CONFIG_B64 --env production
+  | gh secret set RCLONE_CONFIG_B64 --env <DEPLOYMENT>
 ```
 
-Use `gh secret set NAME --env production` for interactive secrets, or pipe a
-file to `gh secret set NAME --env production`. Never put secrets in workflow
+Use `gh secret set NAME --env <DEPLOYMENT>` for interactive secrets, or pipe a
+file to `gh secret set NAME --env <DEPLOYMENT>`. Never put secrets in workflow
 inputs, vars, shell command arguments, or repository files.
 
 ### Mnemosyne setup

@@ -14,7 +14,7 @@ description: Roll back a bad deploy, restore a Mnemosyne snapshot, or diagnose a
 
 ## Steps
 1. Diagnose first, read-only: `docker compose ps -a`, last 40 log lines (redact anything key-like), `ls -ln` on the data volume. Match against `docs/troubleshooting.md`.
-2. Rollback an image: open a PR restoring the previous image digest in `docker-compose.yml`, merge after CI, dispatch `hermes-deploy`. The VPS also keeps `.<compose-file>.rollback`.
+2. Rollback an image: open a PR restoring the previous image digest in `deployments/<DEPLOYMENT>/docker-compose.yml`, merge after CI, dispatch `hermes-deploy`. The VPS also keeps `.<compose-file>.rollback`.
 3. Restore data: restore the restic snapshot to a temp directory, run `PRAGMA integrity_check`, then (with approval and the agent stopped) copy it to the database path and restart.
 4. Never delete volumes. Never run `docker compose down -v`.
 

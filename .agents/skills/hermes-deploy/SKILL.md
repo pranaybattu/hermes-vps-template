@@ -15,7 +15,7 @@ description: Dispatch and watch the GitHub Actions deploy to the VPS, and diagno
 ## Steps
 1. Confirm CI passed on the exact `main` commit: `gh run list --workflow ci.yml --commit <sha>`.
 2. Ask for explicit approval, stating whether `bootstrap_without_database` is true (first install only).
-3. `gh workflow run deploy.yml --ref main -f bootstrap_without_database=<true|false>`, then `gh run watch <id> --exit-status`.
+3. `gh workflow run deploy.yml --ref main -f deployment=<DEPLOYMENT> -f bootstrap_without_database=<true|false>`, then `gh run watch <id> --exit-status`.
 4. On failure read `gh run view <id> --log-failed`. Check `docs/troubleshooting.md` first. Do not retry blindly.
 5. After success run `hermes-verify`.
 

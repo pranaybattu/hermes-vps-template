@@ -8,6 +8,10 @@ on:
         required: true
         type: boolean
         default: false
+      deployment:
+        description: Deployment name (folder under deployments/ and GitHub environment name)
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -15,7 +19,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: vps-production
+  group: vps-${{ inputs.deployment }}
   cancel-in-progress: false
 
 jobs:
@@ -23,12 +27,14 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    environment: production
+    environment: ${{ inputs.deployment }}
     env:
       GH_TOKEN: ${{ github.token }}
       HOSTINGER_HOST: ${{ vars.HOSTINGER_HOST }}
       HOSTINGER_USER: ${{ vars.HOSTINGER_USER }}
       HOSTINGER_PROJECT_DIR: ${{ vars.HOSTINGER_PROJECT_DIR }}
+      DEPLOYMENT: ${{ inputs.deployment }}
+      COMPOSE_SRC: deployments/${{ inputs.deployment }}/docker-compose.yml
       COMPOSE_FILE: ${{ vars.COMPOSE_FILE }}
       HERMES_SERVICE: ${{ vars.HERMES_SERVICE }}
       MNEMOSYNE_DB_PATH: ${{ vars.MNEMOSYNE_DB_PATH }}
@@ -36,9 +42,15 @@ jobs:
       TS_AUDIENCE: ${{ secrets.TS_AUDIENCE }}
       RESTIC_PASSWORD: ${{ secrets.RESTIC_PASSWORD }}
       RCLONE_CONFIG_B64: ${{ secrets.RCLONE_CONFIG_B64 }}
-      RESTIC_REPOSITORY: rclone:drive:hermes-production/mnemosyne
+      RESTIC_REPOSITORY: rclone:drive:hermes-${{ inputs.deployment }}/mnemosyne
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Validate deployment name
+        run: |
+          set -euo pipefail
+          [[ "$DEPLOYMENT" =~ ^[a-z0-9][a-z0-9-]{0,30}$ ]]
+          test -f "$COMPOSE_SRC"
 
       - name: Confirm CI passed for this exact main commit
         env:
@@ -82,7 +94,7 @@ jobs:
           [[ "$HERMES_SERVICE" =~ ^[A-Za-z0-9_.-]+$ ]]
           [[ "$MNEMOSYNE_DB_PATH" =~ ^/[A-Za-z0-9_./-]+$ ]]
           [[ "$MNEMOSYNE_DB_PATH" != *"/../"* && "$MNEMOSYNE_DB_PATH" != */.. ]]
-          test -f "$COMPOSE_FILE"
+          test -f "$COMPOSE_SRC"
           if ! awk -v service="$HERMES_SERVICE" '
             $0 == "  " service ":" { active = 1; next }
             active && /^  [^ ]/ { active = 0 }
@@ -92,7 +104,7 @@ jobs:
               if (image ~ /@sha256:[a-f0-9]{64}([[:space:]]|$)/) pinned = 1
             }
             END { exit !pinned }
-          ' "$COMPOSE_FILE"; then
+          ' "$COMPOSE_SRC"; then
             echo "Hermes image must be pinned by digest in the reviewed Compose file."
             exit 1
           fi
@@ -100,7 +112,7 @@ jobs:
           test -n "$RESTIC_PASSWORD" && test -n "$RCLONE_CONFIG_B64"
           target="$HOSTINGER_USER@$HOSTINGER_HOST"
           temp_file=".$COMPOSE_FILE.codex-tmp"
-          tailscale ssh "$target" "cat > $HOSTINGER_PROJECT_DIR/$temp_file" < "$COMPOSE_FILE"
+          tailscale ssh "$target" "cat > $HOSTINGER_PROJECT_DIR/$temp_file" < "$COMPOSE_SRC"
           if ! tailscale ssh "$target" \
             "cd $HOSTINGER_PROJECT_DIR && docker compose --project-directory $HOSTINGER_PROJECT_DIR -f $temp_file config --quiet" >/dev/null 2>&1; then
             tailscale ssh "$target" "rm -f $HOSTINGER_PROJECT_DIR/$temp_file" >/dev/null 2>&1 || true
