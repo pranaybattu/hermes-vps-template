@@ -52,14 +52,19 @@ terraform -chdir=infra/tailscale apply
 exit
 ```
 
-## Production workload identity
+## Workload identity per deployment
 
-The production federated identity uses GitHub issuer
+For isolation give each deployment its own identity (subject ends `environment:<name>`) and, if
+deployments share a tailnet, its own VPS tag (for example `tag:hermes-<name>`) with a matching
+`tag:ci` grant, so one deployment's CI cannot reach another's VPS.
+
+
+Each deployment's federated identity uses GitHub issuer
 `https://token.actions.githubusercontent.com`, the `auth_keys` scope, and
 `tag:ci`. Its exact subject has this shape (replace the placeholders with the IDs GitHub reports for your repository):
 
 ```text
-repo:<ORG>@<ORG_ID>/<REPO>@<REPO_ID>:environment:production
+repo:<ORG>@<ORG_ID>/<REPO>@<REPO_ID>:environment:<DEPLOYMENT>
 ```
 
 These are repository/organization identifiers, not credentials. GitHub's emitted
