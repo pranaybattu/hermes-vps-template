@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+      - name: Scan repository history for secrets
+        run: |
+          set -euo pipefail
+          curl -fsSL https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz -o "$RUNNER_TEMP/gitleaks.tar.gz"
+          echo 'a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb  '"$RUNNER_TEMP/gitleaks.tar.gz" | sha256sum --check --status
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" git --redact --no-banner .
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.12"
+      - name: Install package
+        run: python -m pip install --no-deps -e .
+      - name: Compile Python sources
+        run: python -m compileall -q src
+      - name: Validate Tailscale policy JSON
+        run: python -m json.tool infra/tailscale/policy.hujson >/dev/null
+      - name: Check SQLite backup behavior
+        run: python -m unittest discover -s tests
+      - name: Validate starter profile
+        run: hermes-infra validate --config src/hermes_infra_manager/templates/hostinger.toml

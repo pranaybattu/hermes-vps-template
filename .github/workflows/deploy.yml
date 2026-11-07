@@ -1,0 +1,163 @@
+name: Deploy to VPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      bootstrap_without_database:
+        description: Allow the first install to proceed when the Mnemosyne database does not exist
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+concurrency:
+  group: vps-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HOSTINGER_HOST: ${{ vars.HOSTINGER_HOST }}
+      HOSTINGER_USER: ${{ vars.HOSTINGER_USER }}
+      HOSTINGER_PROJECT_DIR: ${{ vars.HOSTINGER_PROJECT_DIR }}
+      COMPOSE_FILE: ${{ vars.COMPOSE_FILE }}
+      HERMES_SERVICE: ${{ vars.HERMES_SERVICE }}
+      MNEMOSYNE_DB_PATH: ${{ vars.MNEMOSYNE_DB_PATH }}
+      TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+      TS_AUDIENCE: ${{ secrets.TS_AUDIENCE }}
+      RESTIC_PASSWORD: ${{ secrets.RESTIC_PASSWORD }}
+      RCLONE_CONFIG_B64: ${{ secrets.RCLONE_CONFIG_B64 }}
+      RESTIC_REPOSITORY: rclone:drive:hermes-production/mnemosyne
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Confirm CI passed for this exact main commit
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF" == refs/heads/main ]]
+          if ! gh run list --workflow ci.yml --commit "$DEPLOY_SHA" --json conclusion,status,event \
+            --jq 'any(.[]; .status == "completed" and .conclusion == "success" and .event == "push")' | grep -qx true; then
+            echo "No successful main CI run exists for this commit; deployment stopped."
+            exit 1
+          fi
+
+      - name: Install backup tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y restic rclone
+
+      - name: Configure encrypted backup remote
+        run: |
+          set -euo pipefail
+          install -m 600 /dev/null "$RUNNER_TEMP/rclone.conf"
+          printf '%s' "$RCLONE_CONFIG_B64" | base64 --decode > "$RUNNER_TEMP/rclone.conf"
+          echo "RCLONE_CONFIG=$RUNNER_TEMP/rclone.conf" >> "$GITHUB_ENV"
+
+      - name: Start ephemeral Tailscale runner
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          tags: tag:ci
+
+      - name: Validate settings and candidate Compose file
+        run: |
+          set -euo pipefail
+          [[ "$HOSTINGER_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
+          [[ "$HOSTINGER_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]
+          [[ "$HOSTINGER_PROJECT_DIR" =~ ^(/[A-Za-z0-9_-]+)+$ ]]
+          [[ "$COMPOSE_FILE" =~ ^[A-Za-z0-9_.-]+$ ]]
+          [[ "$HERMES_SERVICE" =~ ^[A-Za-z0-9_.-]+$ ]]
+          [[ "$MNEMOSYNE_DB_PATH" =~ ^/[A-Za-z0-9_./-]+$ ]]
+          [[ "$MNEMOSYNE_DB_PATH" != *"/../"* && "$MNEMOSYNE_DB_PATH" != */.. ]]
+          test -f "$COMPOSE_FILE"
+          if ! awk -v service="$HERMES_SERVICE" '
+            $0 == "  " service ":" { active = 1; next }
+            active && /^  [^ ]/ { active = 0 }
+            active && /^    image:[[:space:]]*/ {
+              image = $0
+              sub(/^    image:[[:space:]]*/, "", image)
+              if (image ~ /@sha256:[a-f0-9]{64}([[:space:]]|$)/) pinned = 1
+            }
+            END { exit !pinned }
+          ' "$COMPOSE_FILE"; then
+            echo "Hermes image must be pinned by digest in the reviewed Compose file."
+            exit 1
+          fi
+          test -n "$TS_OAUTH_CLIENT_ID" && test -n "$TS_AUDIENCE"
+          test -n "$RESTIC_PASSWORD" && test -n "$RCLONE_CONFIG_B64"
+          target="$HOSTINGER_USER@$HOSTINGER_HOST"
+          temp_file=".$COMPOSE_FILE.codex-tmp"
+          tailscale ssh "$target" "cat > $HOSTINGER_PROJECT_DIR/$temp_file" < "$COMPOSE_FILE"
+          if ! tailscale ssh "$target" \
+            "cd $HOSTINGER_PROJECT_DIR && docker compose --project-directory $HOSTINGER_PROJECT_DIR -f $temp_file config --quiet" >/dev/null 2>&1; then
+            tailscale ssh "$target" "rm -f $HOSTINGER_PROJECT_DIR/$temp_file" >/dev/null 2>&1 || true
+            echo "Candidate Compose validation failed; deployment stopped."
+            exit 1
+          fi
+
+      - name: Back up Mnemosyne database before rollout
+        env:
+          BOOTSTRAP_WITHOUT_DATABASE: ${{ inputs.bootstrap_without_database }}
+        run: |
+          set -euo pipefail
+          target="$HOSTINGER_USER@$HOSTINGER_HOST"
+          temp_file=".$COMPOSE_FILE.codex-tmp"
+          trap 'status=$?; if [[ $status -ne 0 ]]; then tailscale ssh "$target" "rm -f $HOSTINGER_PROJECT_DIR/$temp_file" >/dev/null 2>&1 || true; fi' EXIT
+          if tailscale ssh "$target" \
+            "docker compose --project-directory $HOSTINGER_PROJECT_DIR -f $HOSTINGER_PROJECT_DIR/$COMPOSE_FILE ps --status running -q $HERMES_SERVICE | grep -q . || exit 42; docker compose --project-directory $HOSTINGER_PROJECT_DIR -f $HOSTINGER_PROJECT_DIR/$COMPOSE_FILE exec -T $HERMES_SERVICE sh -c 'test -f $MNEMOSYNE_DB_PATH || exit 42'"; then
+            tailscale ssh "$target" \
+              "docker compose --project-directory $HOSTINGER_PROJECT_DIR -f $HOSTINGER_PROJECT_DIR/$COMPOSE_FILE exec -T $HERMES_SERVICE /opt/hermes/.venv/bin/python - $MNEMOSYNE_DB_PATH" \
+              < scripts/sqlite_snapshot.py \
+              | restic backup --stdin --stdin-filename mnemosyne.db
+            restic dump latest mnemosyne.db > /dev/null
+          else
+            status=$?
+            if [[ "$status" == 42 && "$BOOTSTRAP_WITHOUT_DATABASE" == true ]]; then
+              echo "Explicit first-install bootstrap: no Mnemosyne database exists yet."
+            else
+              echo "Database check failed or backup is required; deployment stopped."
+              exit 1
+            fi
+          fi
+
+      - name: Sync reviewed Compose file and deploy
+        run: |
+          set -euo pipefail
+          target="$HOSTINGER_USER@$HOSTINGER_HOST"
+          temp_file=".$COMPOSE_FILE.codex-tmp"
+          tailscale ssh "$target" \
+            "cd $HOSTINGER_PROJECT_DIR && umask 077 && cp $COMPOSE_FILE .$COMPOSE_FILE.rollback && chmod 600 .$COMPOSE_FILE.rollback && mv -f $temp_file $COMPOSE_FILE && docker compose --project-directory $HOSTINGER_PROJECT_DIR -f $HOSTINGER_PROJECT_DIR/$COMPOSE_FILE pull $HERMES_SERVICE && docker compose --project-directory $HOSTINGER_PROJECT_DIR -f $HOSTINGER_PROJECT_DIR/$COMPOSE_FILE up -d --wait --wait-timeout 240 --no-build --force-recreate $HERMES_SERVICE hermes-workspace"
+
+      - name: Install and verify Mnemosyne
+        run: |
+          set -euo pipefail
+          target="$HOSTINGER_USER@$HOSTINGER_HOST"
+          tailscale ssh "$target" \
+            "docker compose --project-directory $HOSTINGER_PROJECT_DIR -f $HOSTINGER_PROJECT_DIR/$COMPOSE_FILE exec -T --user hermes $HERMES_SERVICE sh -s" < scripts/install_mnemosyne.sh
+          tailscale ssh "$target" \
+            "cd $HOSTINGER_PROJECT_DIR && docker compose --project-directory $HOSTINGER_PROJECT_DIR -f $HOSTINGER_PROJECT_DIR/$COMPOSE_FILE restart $HERMES_SERVICE"
+          tailscale ssh "$target" \
+            "docker compose --project-directory $HOSTINGER_PROJECT_DIR -f $HOSTINGER_PROJECT_DIR/$COMPOSE_FILE exec -T --user hermes $HERMES_SERVICE hermes memory status"
+
+      - name: Configure private HTTPS and verify dashboard
+        run: |
+          set -euo pipefail
+          target="$HOSTINGER_USER@$HOSTINGER_HOST"
+          tailscale ssh "$target" sh -s < scripts/private_dashboard.sh
+
+      - name: Clean up runner credentials
+        if: always()
+        run: rm -f "$RUNNER_TEMP/rclone.conf"

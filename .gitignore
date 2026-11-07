@@ -1,0 +1,32 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+.coverage
+.pytest_cache/
+.ruff_cache/
+
+# Local profiles may contain host identifiers. Secret values belong in Hostinger.
+hermes-infra.toml
+*.local.toml
+.env
+.env.*
+!.env.example
+*.tfvars
+*.tfvars.json
+
+# Terraform state and local credentials must never be committed.
+**/.terraform/
+**/terraform.tfstate
+**/terraform.tfstate.*
+**/*.tfplan
+**/terraform.rc
+**/.terraformrc
+
+# Backup and credential material
+*.rclone.conf
+rclone.conf
+restic-password*
+.public-safe-denylist

@@ -1,0 +1,9 @@
+# Pin the base image by digest before deploying: replace `:latest` with `@sha256:<digest>`
+# from `docker buildx imagetools inspect <image>`. An unpinned base changes silently on rebuild.
+FROM ghcr.io/outsourc-e/hermes-workspace:latest
+
+USER root
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends sqlite3 \
+    && rm -rf /var/lib/apt/lists/*

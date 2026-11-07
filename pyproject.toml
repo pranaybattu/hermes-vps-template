@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-infra-manager"
+version = "0.1.0"
+description = "Manage Hermes Agent and Tailscale infrastructure from code."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Problem Hunt contributors" }]
+dependencies = ["PyYAML>=6.0,<7"]
+
+[project.scripts]
+hermes-infra = "hermes_infra_manager.cli:main"
+
+[tool.setuptools.package-data]
+hermes_infra_manager = ["templates/*.toml"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

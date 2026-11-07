@@ -1,0 +1,80 @@
+services:
+  hermes-agent:
+    command:
+      - gateway
+      - run
+    env_file:
+      - .env
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      API_SERVER_ENABLED: ${API_SERVER_ENABLED:-}
+      API_SERVER_HOST: ${API_SERVER_HOST:-}
+      API_SERVER_KEY: ${API_SERVER_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      HERMES_HOME: /opt/data
+      HERMES_DASHBOARD: "1"
+      HERMES_DASHBOARD_HOST: "0.0.0.0"
+      HERMES_DASHBOARD_PORT: "19119"
+      HERMES_DASHBOARD_BASIC_AUTH_USERNAME: ${HERMES_DASHBOARD_BASIC_AUTH_USERNAME:?Set dashboard username on the VPS}
+      HERMES_DASHBOARD_BASIC_AUTH_PASSWORD: ${HERMES_DASHBOARD_BASIC_AUTH_PASSWORD:?Set dashboard password on the VPS}
+      HERMES_DASHBOARD_BASIC_AUTH_SECRET: ${HERMES_DASHBOARD_BASIC_AUTH_SECRET:?Set dashboard session secret on the VPS}
+      HERMES_DASHBOARD_PUBLIC_URL: ${HERMES_DASHBOARD_PUBLIC_URL:-}
+      # Workspace runs as UID 10010; shared private files require the same owner.
+      HERMES_UID: "10010"
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+    image: nousresearch/hermes-agent@sha256:9c5561579f3ffdf333401797094ac3a743738d6c25d40f4331c7bf77b694238d
+    ports:
+      - 127.0.0.1:32770:3000
+      - 127.0.0.1:9119:19119
+    healthcheck:
+      test: ["CMD", "/opt/hermes/.venv/bin/python", "-c", "import socket; socket.create_connection(('127.0.0.1', 19119), 3).close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    cpus: "1.0"
+    mem_limit: 4g
+    pids_limit: 512
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+    volumes:
+      - hermes-agent-data:/opt/data
+  hermes-workspace:
+    build:
+      context: .
+      dockerfile: Dockerfile.workspace
+    depends_on:
+      - hermes-agent
+    environment:
+      COOKIE_SECURE: ${COOKIE_SECURE:-}
+      HERMES_API_TOKEN: ${HERMES_API_TOKEN:-}
+      HERMES_API_URL: ${HERMES_API_URL:-}
+      HERMES_DASHBOARD_URL: ${HERMES_DASHBOARD_URL:-}
+      HERMES_HOME: /home/workspace/.hermes
+      HERMES_PASSWORD: ${HERMES_PASSWORD:-}
+      HERMES_WORKSPACE_DIR: ${HERMES_WORKSPACE_DIR:-}
+      TRUST_PROXY: ${TRUST_PROXY:-}
+    image: hermes-workspace-with-sqlite:latest
+    network_mode: service:hermes-agent
+    cpus: "0.35"
+    mem_limit: 1g
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+    volumes:
+      - hermes-agent-data:/home/workspace/.hermes
+      - hermes-workspace-files:/workspace
+volumes:
+  hermes-agent-data: {}
+  hermes-workspace-files: {}

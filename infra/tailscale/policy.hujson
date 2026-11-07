@@ -1,0 +1,53 @@
+{
+  "tagOwners": {
+    "tag:ci": ["autogroup:admin"],
+    "tag:hermes-vps": ["autogroup:admin"]
+  },
+  "grants": [
+    {
+      "src": ["autogroup:member"],
+      "dst": ["*"],
+      "ip": ["*"]
+    },
+    {
+      "src": ["tag:ci"],
+      "dst": ["tag:hermes-vps"],
+      "ip": ["tcp:22"]
+    }
+  ],
+  "ssh": [
+    {
+      "action": "check",
+      "src": ["autogroup:member"],
+      "dst": ["autogroup:self"],
+      "users": ["autogroup:nonroot", "root"]
+    },
+    {
+      "action": "check",
+      "src": ["autogroup:member"],
+      "dst": ["tag:hermes-vps"],
+      "users": ["root"]
+    },
+    {
+      "action": "accept",
+      "src": ["tag:ci"],
+      "dst": ["tag:hermes-vps"],
+      "users": ["root"]
+    }
+  ],
+  "tests": [
+    {
+      "src": "tag:ci",
+      "proto": "tcp",
+      "accept": ["tag:hermes-vps:22"],
+      "deny": ["tag:hermes-vps:443"]
+    }
+  ],
+  "sshTests": [
+    {
+      "src": "tag:ci",
+      "dst": ["tag:hermes-vps"],
+      "accept": ["root"]
+    }
+  ]
+}

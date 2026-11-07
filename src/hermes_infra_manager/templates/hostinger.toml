@@ -1,0 +1,30 @@
+# Copy this starter with `hermes-infra init` and edit the copy.
+# Keep API keys and passwords in Hostinger Docker Manager > Environment variables.
+
+[profile]
+name = "hostinger-hermes"
+example = true # Change to false after replacing all example values.
+
+[ssh]
+host = "your-vps-tailnet-name-or-ip"
+user = "root"
+identity_file = "~/.ssh/id_ed25519"
+
+[compose]
+# Directory and Compose file already present on the VPS.
+project_directory = "/docker/hermes-workspace"
+file = "docker-compose.yml"
+service = "hermes-agent"
+
+# Names only: the Python manager never reads or prints these values.
+[hostinger]
+required_environment = [
+  "ANTHROPIC_API_KEY",
+  "OPENAI_API_KEY",
+  "OPENROUTER_API_KEY",
+]
+
+[tailscale]
+# Terraform policy adoption is documented separately; don't apply a new policy
+# until the current live policy has been captured and reviewed.
+terraform_directory = "infra/tailscale"
